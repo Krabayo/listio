@@ -112,6 +112,10 @@ CREATE TABLE canonical_products (
     estimated_shelf_life_days INT, -- Días antes de caducar/agotarse en casa (ej. Plátano=5, Leche=7, Arroz=90)
     is_perishable BOOLEAN DEFAULT TRUE,
     storage_type VARCHAR(50) DEFAULT 'ROOM_TEMP', -- 'ROOM_TEMP', 'REFRIGERATED', 'FROZEN'
+    unit_weight_kg NUMERIC(6, 3) DEFAULT 0.500, -- Peso estimado por unidad estándar para cálculo de canasta E-Bike
+    unit_volume_liters NUMERIC(6, 3) DEFAULT 0.800, -- Volumen ocupado en litros (capacidad máxima 28.0 L)
+    fragility_tier VARCHAR(30) DEFAULT '2_MIDDLE_FIRM', -- '1_BASE_HEAVY', '2_MIDDLE_FIRM', '3_TOP_FRAGILE'
+    thermal_sensitivity VARCHAR(30) DEFAULT 'AMBIENT', -- 'AMBIENT', 'CHILLED', 'FROZEN' (para orden de paradas)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -169,6 +173,46 @@ CREATE TABLE raw_receipt_lines (
     detected_total_price NUMERIC(10, 2),
     is_cancelled BOOLEAN DEFAULT FALSE,
     confidence_score NUMERIC(4, 3)
+);
+
+-- ----------------------------------------------------------------------------
+-- 4B. AUDITORÍA VISUAL DE CARRITO PRE-PAGO Y FOTOS DE PRODUCTOS (E-BIKE & EDGE GALLERY)
+-- ----------------------------------------------------------------------------
+CREATE TABLE cart_snapshots (
+    snapshot_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(user_id),
+    chain_id UUID REFERENCES retail_chains(chain_id),
+    photo_uri TEXT NOT NULL, -- Fotografía tomada al carrito antes de pasar a caja
+    captured_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    estimated_total_mxn NUMERIC(10, 2) DEFAULT 0.0,
+    estimated_weight_kg NUMERIC(6, 2) DEFAULT 0.0, -- Límite de canasta E-Bike: 15.0 kg
+    estimated_volume_liters NUMERIC(6, 2) DEFAULT 0.0, -- Límite de canasta E-Bike: 28.0 L
+    ebike_capacity_status VARCHAR(30) DEFAULT 'OPTIMAL', -- 'OPTIMAL', 'WARNING_NEAR_LIMIT', 'EXCEEDS_BASKET'
+    edge_gallery_analysis_json JSONB, -- Respuesta del modelo local en Google AI Edge Gallery
+    notes TEXT
+);
+
+CREATE TABLE cart_snapshot_items (
+    snapshot_item_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    snapshot_id UUID NOT NULL REFERENCES cart_snapshots(snapshot_id) ON DELETE CASCADE,
+    product_id UUID REFERENCES canonical_products(product_id),
+    detected_name VARCHAR(255) NOT NULL,
+    quantity NUMERIC(10, 3) DEFAULT 1.0,
+    estimated_subtotal_mxn NUMERIC(10, 2) DEFAULT 0.0,
+    estimated_weight_kg NUMERIC(6, 3) DEFAULT 0.0,
+    estimated_volume_liters NUMERIC(6, 3) DEFAULT 0.0,
+    stacking_layer VARCHAR(30) DEFAULT '2_MIDDLE_FIRM' -- '1_BASE_HEAVY', '2_MIDDLE_FIRM', '3_TOP_FRAGILE'
+);
+
+CREATE TABLE product_photos (
+    photo_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID REFERENCES canonical_products(product_id),
+    chain_id UUID REFERENCES retail_chains(chain_id),
+    photo_uri TEXT NOT NULL,
+    captured_price_mxn NUMERIC(10, 2),
+    captured_weight_kg NUMERIC(6, 3),
+    captured_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    source VARCHAR(50) DEFAULT 'CAMERA_CAPTURE' -- 'CAMERA_CAPTURE', 'EDGE_GALLERY_SYNC'
 );
 
 -- ----------------------------------------------------------------------------
